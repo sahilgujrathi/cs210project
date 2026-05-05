@@ -1,0 +1,7 @@
+{
+  "train_events": 2708254,
+  "test_events": 11719,
+  "product_popularity_rows": 234561,
+  "user_product_score_rows": 2127570,
+  "user_category_preference_rows": 1434865
+}

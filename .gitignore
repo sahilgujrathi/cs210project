@@ -1,0 +1,11 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+database/*.db
+outputs/matplotlib_cache/
+
+# Large local dataset files
+archive/item_properties_part1.csv
+archive/item_properties_part2.csv
+archive/events.csv

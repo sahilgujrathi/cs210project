@@ -1,0 +1,18 @@
+{
+  "event_counts": {
+    "view": 2664312,
+    "addtocart": 69332,
+    "transaction": 22457
+  },
+  "unique_visitors": 1407580,
+  "unique_products": 235061,
+  "purchase_events": 22457,
+  "figures": [
+    "daily_events.png",
+    "event_type_distribution.png",
+    "events_by_hour.png",
+    "top_categories.png",
+    "top_purchased_products.png",
+    "user_activity_distribution.png"
+  ]
+}
