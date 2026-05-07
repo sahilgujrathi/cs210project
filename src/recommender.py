@@ -1,13 +1,16 @@
 import math
 import sqlite3
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from config import DEFAULT_DB_PATH
+import numpy as np
+
+from config import DEFAULT_DB_PATH, DEFAULT_LATENT_MODEL_PATH
 
 
 class RetailRocketRecommender:
-    def __init__(self, db_path: Path = DEFAULT_DB_PATH):
+    def __init__(self, db_path: Path = DEFAULT_DB_PATH, latent_model_path: Path = DEFAULT_LATENT_MODEL_PATH):
         if not db_path.exists():
             raise FileNotFoundError(f"Database not found: {db_path}")
         self.conn = sqlite3.connect(db_path)
@@ -20,6 +23,14 @@ class RetailRocketRecommender:
         self._category_candidate_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         self._popular_candidate_cache: dict[int, list[dict[str, Any]]] = {}
         self._collaborative_candidate_cache: dict[tuple[int, int, int], dict[int, float]] = {}
+        self.latent_model_path = latent_model_path
+        self.latent_product_ids: np.ndarray | None = None
+        self.latent_item_factors: np.ndarray | None = None
+        self.latent_category_ids: np.ndarray | None = None
+        self.latent_popularity_scores: np.ndarray | None = None
+        self.latent_product_index: dict[int, int] = {}
+        if latent_model_path.exists():
+            self._load_latent_model(latent_model_path)
 
     def close(self) -> None:
         self.conn.close()
@@ -30,6 +41,21 @@ class RetailRocketRecommender:
 
     def _rows(self, query: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
         return list(self.conn.execute(query, params))
+
+    @property
+    def has_latent_model(self) -> bool:
+        return self.latent_product_ids is not None and self.latent_item_factors is not None
+
+    def _load_latent_model(self, model_path: Path) -> None:
+        with np.load(model_path) as data:
+            self.latent_product_ids = data["product_ids"].astype(np.int64)
+            self.latent_item_factors = data["item_factors"].astype(np.float32)
+            self.latent_category_ids = data["category_ids"].astype(np.int64)
+            self.latent_popularity_scores = data["popularity_scores"].astype(np.float32)
+        self.latent_product_index = {
+            int(product_id): index
+            for index, product_id in enumerate(self.latent_product_ids)
+        }
 
     def get_seen_items(self, visitor_id: int) -> set[int]:
         if visitor_id in self._seen_items_cache:
@@ -59,6 +85,13 @@ class RetailRocketRecommender:
             (visitor_id, limit),
         )
         return [dict(row) for row in rows]
+
+    def get_category_preferences(self, visitor_id: int, limit: int = 5) -> list[dict[str, Any]]:
+        preferences = self._get_category_preferences(visitor_id, limit=limit)
+        return [
+            {"category_id": category_id, "score": score}
+            for category_id, score in preferences.items()
+        ]
 
     def choose_demo_visitor(self) -> int | None:
         row = self.conn.execute(
@@ -168,6 +201,71 @@ class RetailRocketRecommender:
         scored.sort(key=lambda row: row["score"], reverse=True)
         return scored[:k]
 
+    def recommend_latent(self, visitor_id: int, k: int = 10, exclude_seen: bool = True) -> list[dict[str, Any]]:
+        if not self.has_latent_model:
+            raise RuntimeError(
+                f"Latent factor model not found at {self.latent_model_path}. "
+                "Run build_latent_model.py before evaluating latent_factors."
+            )
+
+        assert self.latent_item_factors is not None
+        assert self.latent_product_ids is not None
+        assert self.latent_category_ids is not None
+        assert self.latent_popularity_scores is not None
+
+        seen = self.get_seen_items(visitor_id) if exclude_seen else set()
+        history_rows = self._rows(
+            """
+            SELECT itemid, implicit_score
+            FROM user_product_scores
+            WHERE visitorid = ?
+            """,
+            (visitor_id,),
+        )
+
+        user_vector = np.zeros(self.latent_item_factors.shape[1], dtype=np.float32)
+        total_weight = 0.0
+        for row in history_rows:
+            product_id = int(row["itemid"])
+            index = self.latent_product_index.get(product_id)
+            if index is None:
+                continue
+            weight = math.log1p(float(row["implicit_score"]))
+            user_vector += weight * self.latent_item_factors[index]
+            total_weight += weight
+
+        if total_weight <= 0:
+            return self.recommend_popular(visitor_id, k=k, exclude_seen=exclude_seen)
+
+        user_vector = user_vector / total_weight
+        user_norm = np.linalg.norm(user_vector)
+        if user_norm > 0:
+            user_vector = user_vector / user_norm
+
+        similarity_scores = self.latent_item_factors @ user_vector
+        popularity_norm = self.latent_popularity_scores / max(float(self.latent_popularity_scores.max()), 1.0)
+        scores = similarity_scores + 0.03 * popularity_norm
+        ranked_indexes = np.argsort(-scores)
+
+        recommendations = []
+        for index in ranked_indexes:
+            product_id = int(self.latent_product_ids[index])
+            if exclude_seen and product_id in seen:
+                continue
+            category_id = int(self.latent_category_ids[index])
+            recommendations.append(
+                {
+                    "product_id": product_id,
+                    "category_id": None if category_id == -1 else category_id,
+                    "score": float(scores[index]),
+                    "reason": "latent user-product similarity from weighted interaction embeddings",
+                }
+            )
+            if len(recommendations) == k:
+                break
+
+        return recommendations
+
     def _get_category_preferences(self, visitor_id: int, limit: int = 10) -> dict[int, float]:
         cache_key = (visitor_id, limit)
         if cache_key in self._category_preference_cache:
@@ -248,7 +346,13 @@ class RetailRocketRecommender:
         )
         return [int(row["itemid"]) for row in rows]
 
-    def _collaborative_candidates(self, visitor_id: int, limit: int = 200, seed_limit: int = 10) -> dict[int, float]:
+    def _collaborative_candidates(
+        self,
+        visitor_id: int,
+        limit: int = 200,
+        seed_limit: int = 10,
+        max_similar_visitors: int = 500,
+    ) -> dict[int, float]:
         cache_key = (visitor_id, limit, seed_limit)
         if cache_key in self._collaborative_candidate_cache:
             return self._collaborative_candidate_cache[cache_key]
@@ -258,30 +362,55 @@ class RetailRocketRecommender:
             return {}
 
         placeholders = ",".join("?" for _ in seed_items)
-        query = f"""
-            SELECT
-                e2.itemid,
-                COUNT(DISTINCT e2.visitorid) AS visitor_overlap,
-                SUM(
-                    CASE
-                        WHEN e2.event = 'view' THEN 1.0
-                        WHEN e2.event = 'addtocart' THEN 3.0
-                        WHEN e2.event = 'transaction' THEN 5.0
-                        ELSE 0.0
-                    END
-                ) AS collaborative_score
-            FROM train_events e1
-            INNER JOIN train_events e2
-                ON e1.visitorid = e2.visitorid
-            WHERE e1.itemid IN ({placeholders})
-              AND e2.itemid NOT IN ({placeholders})
-            GROUP BY e2.itemid
-            ORDER BY collaborative_score DESC, visitor_overlap DESC
+        visitor_rows = self._rows(
+            f"""
+            SELECT visitorid
+            FROM train_events
+            WHERE itemid IN ({placeholders})
+              AND visitorid != ?
             LIMIT ?
-        """
-        params = tuple(seed_items + seed_items + [limit])
-        rows = self._rows(query, params)
-        candidates = {int(row["itemid"]): float(row["collaborative_score"]) for row in rows}
+            """,
+            tuple(seed_items + [visitor_id, max_similar_visitors * 4]),
+        )
+        similar_visitors = []
+        seen_visitors = set()
+        for row in visitor_rows:
+            similar_visitor = int(row["visitorid"])
+            if similar_visitor in seen_visitors:
+                continue
+            seen_visitors.add(similar_visitor)
+            similar_visitors.append(similar_visitor)
+            if len(similar_visitors) == max_similar_visitors:
+                break
+
+        if not similar_visitors:
+            return {}
+
+        collaborative_scores: Counter[int] = Counter()
+        event_weights = {"view": 1.0, "addtocart": 3.0, "transaction": 5.0}
+        seed_set = set(seed_items)
+        chunk_size = 200
+        for start in range(0, len(similar_visitors), chunk_size):
+            visitor_chunk = similar_visitors[start : start + chunk_size]
+            visitor_placeholders = ",".join("?" for _ in visitor_chunk)
+            interaction_rows = self._rows(
+                f"""
+                SELECT itemid, event
+                FROM train_events
+                WHERE visitorid IN ({visitor_placeholders})
+                """,
+                tuple(visitor_chunk),
+            )
+            for row in interaction_rows:
+                product_id = int(row["itemid"])
+                if product_id in seed_set:
+                    continue
+                collaborative_scores[product_id] += event_weights.get(row["event"], 0.0)
+
+        candidates = {
+            product_id: float(score)
+            for product_id, score in collaborative_scores.most_common(limit)
+        }
         self._collaborative_candidate_cache[cache_key] = candidates
         return candidates
 

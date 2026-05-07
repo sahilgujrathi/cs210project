@@ -4,6 +4,14 @@
     "addtocart": 69332,
     "transaction": 22457
   },
+  "engagement_funnel": {
+    "views": 2664312,
+    "addtocart_events": 69332,
+    "transactions": 22457,
+    "view_to_addtocart_rate": 0.02602247784793973,
+    "view_to_transaction_rate": 0.008428817645981402,
+    "addtocart_to_transaction_rate": 0.3239052674089886
+  },
   "unique_visitors": 1407580,
   "unique_products": 235061,
   "purchase_events": 22457,

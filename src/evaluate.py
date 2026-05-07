@@ -3,7 +3,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from config import DEFAULT_DB_PATH, OUTPUTS_DIR, ensure_project_dirs
+from config import DEFAULT_DB_PATH, DEFAULT_LATENT_MODEL_PATH, OUTPUTS_DIR, ensure_project_dirs
 from recommender import RetailRocketRecommender
 
 
@@ -61,6 +61,8 @@ def evaluate_model(
     for visitor_id, target_item, target_category in test_cases:
         if model_name == "baseline":
             recommendations = recommender.recommend_popular(visitor_id, k=k, exclude_seen=exclude_seen)
+        elif model_name == "latent_factors":
+            recommendations = recommender.recommend_latent(visitor_id, k=k, exclude_seen=exclude_seen)
         else:
             recommendations = recommender.recommend_hybrid(
                 visitor_id,
@@ -126,11 +128,13 @@ def evaluate_mode(
             k,
             exclude_seen,
         ),
+        "latent_factors": evaluate_model(recommender, test_cases, "latent_factors", k, exclude_seen),
     }
 
 
 def run_evaluation(
     db_path: Path,
+    latent_model_path: Path,
     max_users: int | None,
     k: int,
     evaluation_mode: str,
@@ -149,7 +153,7 @@ def run_evaluation(
     }
     selected_modes = mode_config if evaluation_mode == "both" else {evaluation_mode: mode_config[evaluation_mode]}
 
-    recommender = RetailRocketRecommender(db_path)
+    recommender = RetailRocketRecommender(db_path, latent_model_path=latent_model_path)
     try:
         results = {
             "k": k,
@@ -174,6 +178,7 @@ def run_evaluation(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate baseline and hybrid recommenders.")
     parser.add_argument("--database", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument("--latent-model", type=Path, default=DEFAULT_LATENT_MODEL_PATH)
     parser.add_argument("--max-users", type=int, default=1000, help="Number of test users to evaluate. Use 0 for all.")
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument(
@@ -187,7 +192,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     max_users = None if args.max_users == 0 else args.max_users
-    run_evaluation(args.database, max_users, args.k, args.evaluation_mode)
+    run_evaluation(args.database, args.latent_model, max_users, args.k, args.evaluation_mode)
 
 
 if __name__ == "__main__":

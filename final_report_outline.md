@@ -82,6 +82,10 @@ This model is more aligned with the proposal because it uses browsing behavior, 
 
 The hybrid collaborative model adds item co-visitation candidates from visitors who interacted with similar products. This directly addresses the proposal's collaborative filtering goal while keeping the implementation lightweight and reproducible.
 
+### Latent-Factor Model
+
+The latent-factor model learns embedding-style product vectors from weighted user-item interactions using randomized truncated SVD. A visitor profile is represented as the weighted average of product vectors from that visitor's history, and recommendations are ranked by latent similarity.
+
 ## 6. Evaluation
 
 The evaluation uses each visitor's most recent transaction as the held-out test item.
@@ -99,7 +103,7 @@ Metrics:
 - Hit Rate@10
 - Category Hit Rate@10
 
-The baseline, hybrid, and hybrid collaborative models are compared using the same test users.
+The baseline, hybrid, hybrid collaborative, and latent-factor models are compared using the same test users.
 
 Because the product catalog is large and product IDs are hashed, exact product prediction is difficult. Category Hit Rate@10 is included as an additional relevance metric that checks whether recommended products match the category of the held-out purchased item.
 
@@ -130,8 +134,8 @@ Limitations:
 
 Possible extensions:
 
-- Add a matrix factorization model.
 - Add an RNN or GRU model for session-based recommendations.
+- Tune the latent-factor model with larger factor counts and more active users/items.
 - Use more item property fields beyond category.
 - Improve cold-start recommendations.
 - Build a web interface for the demo.

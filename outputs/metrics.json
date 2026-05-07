@@ -24,12 +24,21 @@
       },
       "hybrid_collaborative": {
         "users_evaluated": 1000,
-        "precision_at_10": 0.031900000000000185,
-        "recall_at_10": 0.319,
-        "f1_at_10": 0.05799999999999985,
-        "hit_rate_at_10": 0.319,
+        "precision_at_10": 0.03220000000000019,
+        "recall_at_10": 0.322,
+        "f1_at_10": 0.058545454545454394,
+        "hit_rate_at_10": 0.322,
         "test_cases_with_category": 989,
-        "category_hit_rate_at_10": 0.9009100101112234
+        "category_hit_rate_at_10": 0.9019211324570273
+      },
+      "latent_factors": {
+        "users_evaluated": 1000,
+        "precision_at_10": 0.0401000000000003,
+        "recall_at_10": 0.401,
+        "f1_at_10": 0.07290909090909095,
+        "hit_rate_at_10": 0.401,
+        "test_cases_with_category": 989,
+        "category_hit_rate_at_10": 0.4792719919110212
       }
     },
     "discovery": {
@@ -59,7 +68,16 @@
         "f1_at_10": 0.0,
         "hit_rate_at_10": 0.0,
         "test_cases_with_category": 989,
-        "category_hit_rate_at_10": 0.9009100101112234
+        "category_hit_rate_at_10": 0.9029322548028311
+      },
+      "latent_factors": {
+        "users_evaluated": 1000,
+        "precision_at_10": 0.0001,
+        "recall_at_10": 0.001,
+        "f1_at_10": 0.00018181818181818183,
+        "hit_rate_at_10": 0.001,
+        "test_cases_with_category": 989,
+        "category_hit_rate_at_10": 0.28311425682507585
       }
     }
   }

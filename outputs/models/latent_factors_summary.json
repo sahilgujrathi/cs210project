@@ -1,0 +1,10 @@
+{
+  "users_in_matrix": 2593,
+  "items_in_matrix": 3572,
+  "interaction_rows": 36078,
+  "latent_factors": 32,
+  "max_users": 3000,
+  "max_items": 4000,
+  "random_seed": 42,
+  "output_path": "/Users/ghiriishsridharan/Documents/Codex/Project Proposal /outputs/models/latent_factors.npz"
+}

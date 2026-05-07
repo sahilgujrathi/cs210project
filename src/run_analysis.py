@@ -18,6 +18,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+def safe_rate(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator else 0.0
+
+
 def save_bar_chart(df: pd.DataFrame, x: str, y: str, title: str, path: Path, rotation: int = 0) -> None:
     plt.figure(figsize=(9, 5))
     plt.bar(df[x].astype(str), df[y])
@@ -66,6 +70,21 @@ def run_analysis(db_path: Path) -> None:
             """,
             conn,
         )
+        event_count_map = {
+            str(row.event): int(row.event_count)
+            for row in event_counts.itertuples(index=False)
+        }
+        views = event_count_map.get("view", 0)
+        addtocarts = event_count_map.get("addtocart", 0)
+        transactions = event_count_map.get("transaction", 0)
+        engagement_funnel = {
+            "views": views,
+            "addtocart_events": addtocarts,
+            "transactions": transactions,
+            "view_to_addtocart_rate": safe_rate(addtocarts, views),
+            "view_to_transaction_rate": safe_rate(transactions, views),
+            "addtocart_to_transaction_rate": safe_rate(transactions, addtocarts),
+        }
         save_bar_chart(
             event_counts,
             "event",
@@ -168,7 +187,8 @@ def run_analysis(db_path: Path) -> None:
         plt.close()
 
         summary = {
-            "event_counts": dict(zip(event_counts["event"], event_counts["event_count"])),
+            "event_counts": event_count_map,
+            "engagement_funnel": engagement_funnel,
             "unique_visitors": int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]),
             "unique_products": int(conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]),
             "purchase_events": int(conn.execute("SELECT COUNT(*) FROM purchases").fetchone()[0]),
@@ -181,6 +201,15 @@ def run_analysis(db_path: Path) -> None:
         print("-----------------")
         for figure in summary["figures"]:
             print(f"Saved outputs/figures/{figure}")
+        print()
+        print("Engagement funnel")
+        print("-----------------")
+        print(f"Views: {views:,}")
+        print(f"Add-to-cart events: {addtocarts:,}")
+        print(f"Transactions: {transactions:,}")
+        print(f"View to add-to-cart rate: {engagement_funnel['view_to_addtocart_rate'] * 100:.2f}%")
+        print(f"View to transaction rate: {engagement_funnel['view_to_transaction_rate'] * 100:.2f}%")
+        print(f"Add-to-cart to transaction rate: {engagement_funnel['addtocart_to_transaction_rate'] * 100:.2f}%")
         print(f"Saved summary to {summary_path}")
     finally:
         conn.close()

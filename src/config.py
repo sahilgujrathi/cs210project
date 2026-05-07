@@ -9,6 +9,7 @@ FIGURES_DIR = OUTPUTS_DIR / "figures"
 MODELS_DIR = OUTPUTS_DIR / "models"
 
 DEFAULT_DB_PATH = DATABASE_DIR / "retailrocket.db"
+DEFAULT_LATENT_MODEL_PATH = MODELS_DIR / "latent_factors.npz"
 
 EVENT_WEIGHTS = {
     "view": 1.0,
